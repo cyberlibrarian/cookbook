@@ -1,0 +1,43 @@
+version: "3.2"
+services:
+    ngnix:
+        image: nginx
+#        command: python start.py
+        ports: 
+            - "80:80"
+        environment:
+            - NGINX_HOST=company.com
+            - NGINX_PORT=80
+        volumes:
+            - "./nginx/data:/data:rw"
+        networks:
+            - dmz
+            
+    attacker:
+        build: ./attacker
+        ports:
+            - "4444:4444"
+        volumes:
+            - "./attacker/data:/data:rw"
+        networks:
+            - attacker
+        
+    firewall:
+        build: ./firewall
+        ports:
+            - "22:22"
+        networks:
+            - external
+            - dmz
+            - attacker
+            
+# volumes:
+    
+networks:
+    dmz:
+        driver: macvlan
+    workstation:
+    attacker:
+        driver: macvlan
+    external:
+        driver: bridge
