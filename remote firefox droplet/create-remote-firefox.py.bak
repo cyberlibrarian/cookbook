@@ -1,0 +1,166 @@
+#!env python
+#
+
+import os
+from random import randint
+from time import sleep
+import getpass
+import digitalocean as do
+
+# TODO get this from command line args, use these as defaults
+# For firefox this should be a good size, but it would cost a lot if we didn't destroy it after using it.
+size='s-4vcpu-8gb' # the drive for this size is 160GB... overkill but we need at least 40-50GB
+image='ubuntu-20-04-x64'
+
+# TODO get API optionally from command line arg but keep these methods
+# Get the DO API Token securely
+if 'DO_TOKEN' in os.environ.keys():
+    token = os.getenv('DO_TOKEN')
+else:
+    print(os.getenv())
+
+# Create a DO API manager object, used to get information about our account and droplets
+try:
+    manager = do.Manager(token=token)
+except Exception as e:
+    print(f'Err: {e}')
+	
+# you can add 'tag_name="tagname"' in the paramaters to search
+try:
+    droplets = manager.get_all_droplets()
+except Exception as e:
+    print(f'Err: {e}')
+	
+# print(f'Number of existing droplets: {len(droplets)}')
+# list the droplets
+# for droplet in droplets:
+#     print(droplet)
+#     print(dir(droplet))
+    # print(f'{droplet.id}, {droplet.name}, {droplet.status}, {droplet.size["slug"]}, {droplet.region["name"]}')
+    
+try:
+    regions = manager.get_all_regions()
+except Exception as e:
+    print(f'Err: {e}')
+
+for region in regions:
+    if size in region.sizes:
+        region_slug = region.slug
+    else:
+        region_slug='nyc1'
+
+# if region_slug:
+    # print(f'First region offering {size} is {region_slug}')
+# else:
+    # print('No region found. Selecting nyc1.')
+    # region_slug='nyc1' 
+    
+#name = f'srv{randint(100,999)}-{size}-{region_slug}'
+name = f'srv{randint(100,999)}'
+
+try:
+    keys = manager.get_all_sshkeys()
+except Exception as e:
+    print(f'Err: {e}')
+    
+# list the keys
+#for key in keys:
+#    print(f'{key.id}, {key.fingerprint}, {key.name}')
+#    print(f'{key.public_key}')
+
+
+cloud_config_script ="""
+#cloud-config
+write_files:
+  - path: /usr/local/bin/tiger
+    content: |
+      #!/bin/bash
+      tigervncserver -useold -fg -localhost yes -autokill -depth 16 -securitytype None -xstartup lxsession 
+runcmd:
+  - sed -i -e 's/^#Port.*$/Port 39022/' /etc/ssh/sshd_config
+  - sed -i -e 's/^#ListenAddress 0.0.0.0$/ListenAddress 127.0.0.1/' /etc/ssh/sshd_config
+  - sed -i -e 's/^#ListenAddress ::$/ListenAddress ::/' /etc/ssh/sshd_config
+  - systemctl restart ssh
+  - chmod +x /usr/local/bin/tiger
+packages:
+  - lxde-core
+  - firefox
+  - chromium-browser
+  - tigervnc-standalone-server
+  - git
+  - net-tools
+power_state:
+  timeout: 120
+  delay: "+1"
+  message: Rebooting in one minute
+  mode: poweroff
+"""
+
+# Configure our droplet now that all configuration items are defined
+droplet = do.Droplet(token=token, 
+                     name=name,
+                     region=region_slug, 
+                     size=size,
+                     image=image,
+                     ssh_keys=keys,
+                     ipv6=True,
+                     backups=False,
+                     user_data=cloud_config_script
+                    )
+
+# Create the droplet
+try:
+    droplet.create()
+except Exception as e:
+    print(f'Err: {e}')
+    
+# Let's do a quick check to see if the droplet has been created
+#actions = droplet.get_actions()
+# we assume that the first action is the create action; TODO maybe check for sure
+#actions[0].load()
+#actions[0].wait(5) # wait until it is created, checking every 5 seconds
+#print(actions[0])
+
+
+# The droplet will take a while to provision, after it is created. 
+# Our cloud-config script reboots at the end, so we can wait for the
+# status to be "off" instead active.
+droplet.load()
+# TODO make the sleep/wait time a variable read from command line arg
+print('Waiting for the droplet to poweroff. Checking every 60 seconds.')
+# TODO add a timeout to ensure we don't loop infinitiely. Wait 15 minutes?
+while droplet.status != 'off':
+    print(f'Droplet status is: "{droplet.status}"')
+    sleep(60)
+    droplet.load()
+
+
+print("Configuration is complete. Powering on droplet.")
+droplet.power_on()
+
+droplet.load()
+actions = droplet.get_actions()
+actions[0].load()
+# wait for the poweron to complete, check every 5 seconds
+actions[0].wait(5)
+#print(actions[0])
+
+while droplet.status == 'off':
+    sleep(10)
+    droplet.load()
+    print(f'Droplet status is: "{droplet.status}"')
+    
+droplet.load()
+actions = droplet.get_actions()
+for action in actions:
+    action.load()
+    print(action)
+    
+while droplet.status != 'active':
+    sleep(30)
+    droplet.load()
+    print(f'Droplet status is: "{droplet.status}"')
+
+droplet.load()
+print(f'{droplet.id}, {droplet.name}, {droplet.status}, {droplet.ip_address}, {droplet.ip_v6_address}')
+
