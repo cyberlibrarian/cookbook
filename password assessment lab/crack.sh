@@ -10,7 +10,7 @@ DICT = "/mnt/d/downloads/words/collected.txt"
 HC_SESS = "b6-mask"
 ${HC_CMD} ${HC_OPTIONS} --outfile "${HC_SESS}" --session "${HC_SESS}" --attack-mode 3 --increment ${HASH_FILE} "?b?b?b?b?b?b"
 
-### Crack all characters up to 7 characters (mask attack) (0.5 hours)
+### Crack all ASCII character up to 7 characters (mask attack) (0.5 hours)
 HC_SESS = "a7-mask"
 ${HC_CMD} ${HC_OPTIONS} --outfile "${HC_SESS}" --session "${HC_SESS}" --attack-mode 3 ${HASH_FILE} "?a?a?a?a?a?a?a"
 
@@ -23,7 +23,7 @@ HC_SESS = "dict"
 ${HC_CMD} ${HC_OPTIONS} --outfile "${HC_SESS}" --session "${HC_SESS}" --attack-mode 0 ${HASH_FILE} ${DICT}
 
 ### Dictionary + rules (each one takes at most 45 minutes)
-for RULE in "${HC_PATH}\rules\*"
+for RULE in "${HC_PATH}\rules\*.rule"
 do
   HC_SESS = "rule-${RULE}"
   ${HC_CMD} ${HC_OPTIONS} --outfile "${HC_SESS}" --session "${HC_SESS}" --loopback --attack-mode 0 ${HASH_FILE} ${DICT}
